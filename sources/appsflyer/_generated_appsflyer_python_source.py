@@ -13,6 +13,7 @@ from typing import (
     Iterator,
     List,
 )
+import datetime as dt
 import io
 import json
 
@@ -437,21 +438,21 @@ def register_lakeflow_source(spark):
         def _get_date_range(self, start_offset: dict) -> tuple:
             """Determine the date range for data extraction."""
             if start_offset and "from_date" in start_offset and "to_date" in start_offset:
-                from_date = datetime.fromisoformat(start_offset["from_date"])
-                to_date = datetime.fromisoformat(start_offset["to_date"])
+                from_date = dt.datetime.fromisoformat(start_offset["from_date"])
+                to_date = dt.datetime.fromisoformat(start_offset["to_date"])
             else:
                 # Initial sync - use start_date or default to 90 days ago
                 from_date = (
-                    datetime.fromisoformat(self.start_date)
+                    dt.datetime.fromisoformat(self.start_date)
                     if self.start_date
-                    else datetime.now() - timedelta(days=90)
+                    else dt.datetime.now() - timedelta(days=90)
                 )
                 # Read one day at a time initially
                 to_date = from_date + timedelta(days=1)
             return from_date, to_date
 
         def _build_query_params(
-            self, from_date: datetime, to_date: datetime, table_options: Dict[str, str]
+            self, from_date: dt.datetime, to_date: dt.datetime, table_options: Dict[str, str]
         ) -> dict:
             """Build query parameters for API request."""
             params = {
@@ -472,10 +473,10 @@ def register_lakeflow_source(spark):
             return params
 
         def _calculate_next_offset(
-            self, num_records: int, from_date: datetime, to_date: datetime
+            self, num_records: int, from_date: dt.datetime, to_date: dt.datetime
         ) -> dict:
             """Calculate the next offset for pagination."""
-            current_time = datetime.now()
+            current_time = dt.datetime.now()
 
             if num_records >= self.max_rows:
                 # Hit row limit - need to split time range
@@ -550,7 +551,7 @@ def register_lakeflow_source(spark):
             """Parse timestamp field in-place."""
             if field in record and record[field]:
                 try:
-                    record[field] = datetime.strptime(
+                    record[field] = dt.datetime.strptime(
                         record[field], "%Y-%m-%d %H:%M:%S"
                     )
                 except (ValueError, TypeError):
