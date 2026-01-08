@@ -1,10 +1,11 @@
-import requests
 import csv
 import io
-from pyspark.sql.types import *
 from datetime import datetime, timedelta
 from typing import Dict, List, Iterator
 from urllib.parse import quote
+
+import requests
+from pyspark.sql.types import *
 
 
 class LakeflowConnect:
@@ -226,6 +227,78 @@ class LakeflowConnect:
 
         return metadata
 
+    def _get_date_range(self, start_offset: dict) -> tuple:
+        """Determine the date range for data extraction."""
+        if start_offset and "from_date" in start_offset and "to_date" in start_offset:
+            from_date = datetime.fromisoformat(start_offset["from_date"])
+            to_date = datetime.fromisoformat(start_offset["to_date"])
+        else:
+            # Initial sync - use start_date or default to 90 days ago
+            from_date = (
+                datetime.fromisoformat(self.start_date)
+                if self.start_date
+                else datetime.now() - timedelta(days=90)
+            )
+            # Read one day at a time initially
+            to_date = from_date + timedelta(days=1)
+        return from_date, to_date
+
+    def _build_query_params(
+        self, from_date: datetime, to_date: datetime, table_options: Dict[str, str]
+    ) -> dict:
+        """Build query parameters for API request."""
+        params = {
+            "from": from_date.strftime("%Y-%m-%d %H:%M:%S"),
+            "to": to_date.strftime("%Y-%m-%d %H:%M:%S"),
+            "maximum_rows": str(self.max_rows),
+        }
+
+        # Add optional table_options
+        optional_params = [
+            "event_name", "media_source", "geo",
+            "timezone", "currency", "additional_fields"
+        ]
+        for param in optional_params:
+            if param in table_options:
+                params[param] = table_options[param]
+
+        return params
+
+    def _calculate_next_offset(
+        self, num_records: int, from_date: datetime, to_date: datetime
+    ) -> dict:
+        """Calculate the next offset for pagination."""
+        current_time = datetime.now()
+
+        if num_records >= self.max_rows:
+            # Hit row limit - need to split time range
+            time_diff = to_date - from_date
+            if time_diff.total_seconds() <= 3600:  # Already at 1 hour or less
+                # Can't split further, move to next hour
+                return {
+                    "from_date": to_date.isoformat(),
+                    "to_date": min(to_date + timedelta(hours=1), current_time).isoformat(),
+                }
+            # Split the range in half
+            mid_date = from_date + (time_diff / 2)
+            return {
+                "from_date": from_date.isoformat(),
+                "to_date": mid_date.isoformat(),
+            }
+
+        if to_date >= current_time:
+            # Caught up to current time - return same offset to signal completion
+            return {
+                "from_date": from_date.isoformat(),
+                "to_date": to_date.isoformat(),
+            }
+
+        # Move to next time window
+        return {
+            "from_date": to_date.isoformat(),
+            "to_date": min(to_date + timedelta(days=1), current_time).isoformat(),
+        }
+
     def read_table(
         self, table_name: str, start_offset: dict, table_options: Dict[str, str]
     ) -> (Iterator[dict], dict):
@@ -244,45 +317,11 @@ class LakeflowConnect:
             raise ValueError(f"Table '{table_name}' is not supported.")
 
         # Determine date range for this read
-        if start_offset and "from_date" in start_offset and "to_date" in start_offset:
-            from_date = datetime.fromisoformat(start_offset["from_date"])
-            to_date = datetime.fromisoformat(start_offset["to_date"])
-        else:
-            # Initial sync - use start_date or default to 90 days ago
-            if self.start_date:
-                from_date = datetime.fromisoformat(self.start_date)
-            else:
-                from_date = datetime.now() - timedelta(days=90)
-            # Read one day at a time initially
-            to_date = from_date + timedelta(days=1)
+        from_date, to_date = self._get_date_range(start_offset)
 
-        # Build API URL
+        # Build API request
         endpoint = f"{self.base_url}/{table_name}/v5"
-
-        # Format dates for API (YYYY-MM-DD HH:MM:SS)
-        from_str = from_date.strftime("%Y-%m-%d %H:%M:%S")
-        to_str = to_date.strftime("%Y-%m-%d %H:%M:%S")
-
-        # Build query parameters
-        params = {
-            "from": from_str,
-            "to": to_str,
-            "maximum_rows": str(self.max_rows),
-        }
-
-        # Add optional table_options
-        if "event_name" in table_options:
-            params["event_name"] = table_options["event_name"]
-        if "media_source" in table_options:
-            params["media_source"] = table_options["media_source"]
-        if "geo" in table_options:
-            params["geo"] = table_options["geo"]
-        if "timezone" in table_options:
-            params["timezone"] = table_options["timezone"]
-        if "currency" in table_options:
-            params["currency"] = table_options["currency"]
-        if "additional_fields" in table_options:
-            params["additional_fields"] = table_options["additional_fields"]
+        params = self._build_query_params(from_date, to_date, table_options)
 
         # Make API request
         response = requests.get(endpoint, headers=self.auth_header, params=params)
@@ -293,44 +332,51 @@ class LakeflowConnect:
             )
 
         # Parse CSV response
-        records = self._parse_csv_response(response.text)
-        records_list = list(records)
-        num_records = len(records_list)
+        records_list = list(self._parse_csv_response(response.text))
 
         # Calculate next offset
-        current_time = datetime.now()
-
-        if num_records >= self.max_rows:
-            # Hit row limit - need to split time range
-            # Split current time range in half
-            time_diff = to_date - from_date
-            if time_diff.total_seconds() <= 3600:  # Already at 1 hour or less
-                # Can't split further, move to next hour
-                next_offset = {
-                    "from_date": to_date.isoformat(),
-                    "to_date": min(to_date + timedelta(hours=1), current_time).isoformat(),
-                }
-            else:
-                # Split the range in half
-                mid_date = from_date + (time_diff / 2)
-                next_offset = {
-                    "from_date": from_date.isoformat(),
-                    "to_date": mid_date.isoformat(),
-                }
-        elif to_date >= current_time:
-            # Caught up to current time - return same offset to signal completion
-            next_offset = {
-                "from_date": from_date.isoformat(),
-                "to_date": to_date.isoformat(),
-            }
-        else:
-            # Move to next time window
-            next_offset = {
-                "from_date": to_date.isoformat(),
-                "to_date": min(to_date + timedelta(days=1), current_time).isoformat(),
-            }
+        next_offset = self._calculate_next_offset(len(records_list), from_date, to_date)
 
         return iter(records_list), next_offset
+
+    def _parse_timestamp(self, record: dict, field: str) -> None:
+        """Parse timestamp field in-place."""
+        if field in record and record[field]:
+            try:
+                record[field] = datetime.strptime(
+                    record[field], "%Y-%m-%d %H:%M:%S"
+                )
+            except (ValueError, TypeError):
+                record[field] = None
+
+    def _parse_numeric_fields(self, record: dict) -> None:
+        """Parse all numeric fields in-place."""
+        # Parse float fields
+        float_fields = [
+            "event_revenue", "event_revenue_usd", "af_cost_value",
+            "af_net_revenue", "af_price"
+        ]
+        for field in float_fields:
+            if field in record and record[field]:
+                try:
+                    record[field] = float(record[field])
+                except (ValueError, TypeError):
+                    record[field] = None
+
+        # Parse integer fields
+        integer_fields = [
+            "af_purchase_date_ms", "af_quantity", "impressions"
+        ]
+        for field in integer_fields:
+            if field in record and record[field]:
+                try:
+                    record[field] = int(record[field])
+                except (ValueError, TypeError):
+                    record[field] = None
+
+        # Parse boolean fields
+        if "wifi" in record and record["wifi"]:
+            record["wifi"] = record["wifi"].lower() == "true"
 
     def _parse_csv_response(self, csv_text: str) -> List[dict]:
         """
@@ -347,56 +393,11 @@ class LakeflowConnect:
             record = {k: (v if v != "" else None) for k, v in row.items()}
 
             # Parse timestamps
-            if "event_time" in record and record["event_time"]:
-                try:
-                    record["event_time"] = datetime.strptime(
-                        record["event_time"], "%Y-%m-%d %H:%M:%S"
-                    )
-                except (ValueError, TypeError):
-                    record["event_time"] = None
-
-            if "install_time" in record and record["install_time"]:
-                try:
-                    record["install_time"] = datetime.strptime(
-                        record["install_time"], "%Y-%m-%d %H:%M:%S"
-                    )
-                except (ValueError, TypeError):
-                    record["install_time"] = None
-
-            if "attributed_touch_time" in record and record["attributed_touch_time"]:
-                try:
-                    record["attributed_touch_time"] = datetime.strptime(
-                        record["attributed_touch_time"], "%Y-%m-%d %H:%M:%S"
-                    )
-                except (ValueError, TypeError):
-                    record["attributed_touch_time"] = None
+            for timestamp_field in ["event_time", "install_time", "attributed_touch_time"]:
+                self._parse_timestamp(record, timestamp_field)
 
             # Parse numeric fields
-            numeric_fields = [
-                "event_revenue", "event_revenue_usd", "af_cost_value",
-                "af_net_revenue", "af_price"
-            ]
-            for field in numeric_fields:
-                if field in record and record[field]:
-                    try:
-                        record[field] = float(record[field])
-                    except (ValueError, TypeError):
-                        record[field] = None
-
-            # Parse integer fields
-            integer_fields = [
-                "af_purchase_date_ms", "af_quantity", "impressions"
-            ]
-            for field in integer_fields:
-                if field in record and record[field]:
-                    try:
-                        record[field] = int(record[field])
-                    except (ValueError, TypeError):
-                        record[field] = None
-
-            # Parse boolean fields
-            if "wifi" in record and record["wifi"]:
-                record["wifi"] = record["wifi"].lower() == "true"
+            self._parse_numeric_fields(record)
 
             records.append(record)
 
