@@ -1,0 +1,11 @@
+# Local configuration with secrets
+configs/dev_local_config.json
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Draft/temporary files
+appsflyer_simple.py
