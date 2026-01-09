@@ -520,11 +520,13 @@ class LakeflowConnect:
         text = response.content.decode('utf-8-sig')
         if not text or not text.strip():
             # Empty response, return empty iterator
+            print(f"[AppsFlyer] No data for {report_type}: {from_date} to {to_date}")
             return iter([]), cursor
 
         # Parse CSV into list of dictionaries
         csv_reader = csv.DictReader(io.StringIO(text))
         raw_data = list(csv_reader)
+        print(f"[AppsFlyer] {report_type}: Parsed {len(raw_data)} raw records from CSV")
 
         # Normalize field names and values
         # CSV headers are like "Event Time" but schema expects "event_time"
@@ -536,6 +538,10 @@ class LakeflowConnect:
             }
 
         data = [normalize_record(record) for record in raw_data]
+        print(
+            f"[AppsFlyer] {report_type}: Normalized {len(data)} records, "
+            f"date range: {from_date} to {to_date}"
+        )
 
         # Find the maximum event_time or date for the next cursor
         max_cursor = cursor

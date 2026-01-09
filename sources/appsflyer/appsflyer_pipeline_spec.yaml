@@ -1,4 +1,4 @@
-connection_name: appsflyer_apps
+connection_name: my_appsflyer_conn
 objects:
   - table:
       source_table: organic_in_app_events_report
