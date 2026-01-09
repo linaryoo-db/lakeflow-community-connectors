@@ -1,5 +1,6 @@
-import pytest
 from pathlib import Path
+
+import pytest
 
 from tests import test_suite
 from tests.test_suite import LakeflowConnectTester
