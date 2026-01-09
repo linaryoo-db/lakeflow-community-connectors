@@ -27,6 +27,8 @@ For local testing and development:
      "base_url": "https://hq1.appsflyer.com"
    }
    ```
+   
+   **Note**: The connector automatically waits 60 seconds between API requests to prevent WAF (Web Application Firewall) challenges.
 
 3. **Edit `local_table_config.json`** with your app settings:
    ```json
@@ -51,6 +53,8 @@ To configure the connector, provide the following parameters in your connector o
 | `api_token` | string | Yes | API token for AppsFlyer authentication. Obtain from AppsFlyer Dashboard → (User menu) → API Tokens | `abc123-def456-ghi789` |
 | `base_url` | string | No | Base URL for the AppsFlyer API. Defaults to `https://hq1.appsflyer.com` (US region). Use `https://eu-west1.appsflyer.com` for EU region. | `https://hq1.appsflyer.com` |
 | `externalOptionsAllowList` | string | Yes | Comma-separated list of table-specific options. Must include: `app_id,start_date,lookback_hours,max_days_per_batch` | `app_id,start_date,lookback_hours,max_days_per_batch` |
+
+**Note**: The connector automatically applies a 60-second delay between API requests to prevent rate limiting and WAF (Web Application Firewall) challenges.
 
 **Note**: The `externalOptionsAllowList` is a required connection parameter that must include the following options: `app_id,start_date,lookback_hours,max_days_per_batch`. These options are used to configure data retrieval for individual tables.
 

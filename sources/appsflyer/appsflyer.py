@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Iterator, Any
 import requests
+import time
 from pyspark.sql.types import (
     StructType,
     StructField,
@@ -29,6 +30,11 @@ class LakeflowConnect:
 
         self.base_url = options.get("base_url", "https://hq1.appsflyer.com").rstrip("/")
         self.api_token = api_token
+        
+        # Rate limiting: Fixed 60 second delay between requests to avoid WAF challenges
+        # AppsFlyer API triggers WAF challenges if requests are too frequent
+        self.rate_limit_delay = 60.0  # Fixed at 60 seconds between requests
+        self._last_request_time = 0
 
         # Configure a session with proper headers for AppsFlyer API
         # Note: Management API (/api/mng/*) and Raw Data Export API (/export/*) 
@@ -383,12 +389,30 @@ class LakeflowConnect:
             ]
         )
 
+    def _apply_rate_limit(self):
+        """
+        Apply rate limiting to avoid triggering WAF challenges.
+        Waits if necessary to maintain the configured delay between requests.
+        """
+        if self.rate_limit_delay > 0:
+            current_time = time.time()
+            time_since_last_request = current_time - self._last_request_time
+            
+            if time_since_last_request < self.rate_limit_delay:
+                sleep_time = self.rate_limit_delay - time_since_last_request
+                time.sleep(sleep_time)
+            
+            self._last_request_time = time.time()
+
     def _read_apps(
         self, start_offset: dict, table_options: dict[str, str]
     ) -> (Iterator[dict], dict):
         """
         Read the apps snapshot table.
         """
+        # Apply rate limiting before making request
+        self._apply_rate_limit()
+        
         url = f"{self.base_url}/api/mng/apps"
         response = self._session.get(url, timeout=60)
 
@@ -562,6 +586,9 @@ class LakeflowConnect:
             "to": to_date,
             "timezone": "UTC",
         }
+
+        # Apply rate limiting before making request
+        self._apply_rate_limit()
 
         # Make API request with CSV Accept header
         # Note: Raw Data Export API expects CSV format
