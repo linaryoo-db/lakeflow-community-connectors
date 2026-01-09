@@ -3,8 +3,10 @@ Tests for the AppsFlyer LakeflowConnect connector.
 
 To run these tests:
 1. Copy the example configs and add your credentials:
-   cp sources/appsflyer/configs/dev_config.json sources/appsflyer/configs/local_config.json
-   cp sources/appsflyer/configs/dev_table_config.json sources/appsflyer/configs/local_table_config.json
+   cp sources/appsflyer/configs/dev_config.json \
+      sources/appsflyer/configs/local_config.json
+   cp sources/appsflyer/configs/dev_table_config.json \
+      sources/appsflyer/configs/local_table_config.json
 
 2. Edit local_config.json with your API token:
    {
@@ -30,6 +32,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
 
+# pylint: disable=wrong-import-position
 from tests import test_suite
 from tests.test_suite import LakeflowConnectTester
 from tests.test_utils import load_config
@@ -43,13 +46,22 @@ def test_appsflyer_connector():
     test_suite.LakeflowConnect = LakeflowConnect
 
     # Load connection-level configuration (e.g. api_token, base_url)
-    # Try local_config.json first (with actual credentials), fall back to dev_config.json
+    # Try local_config.json first (with actual credentials),
+    # fall back to dev_config.json
     parent_dir = Path(__file__).parent.parent
     local_config_path = parent_dir / "configs" / "local_config.json"
-    config_path = local_config_path if local_config_path.exists() else parent_dir / "configs" / "dev_config.json"
-    
+    dev_config_path = parent_dir / "configs" / "dev_config.json"
+    config_path = (
+        local_config_path if local_config_path.exists()
+        else dev_config_path
+    )
+
     local_table_config_path = parent_dir / "configs" / "local_table_config.json"
-    table_config_path = local_table_config_path if local_table_config_path.exists() else parent_dir / "configs" / "dev_table_config.json"
+    dev_table_config_path = parent_dir / "configs" / "dev_table_config.json"
+    table_config_path = (
+        local_table_config_path if local_table_config_path.exists()
+        else dev_table_config_path
+    )
 
     config = load_config(config_path)
     table_config = load_config(table_config_path)
@@ -84,7 +96,7 @@ def test_appsflyer_connector():
     print(f"   Passed: {report.passed_tests}")
     print(f"   Failed: {report.failed_tests}")
     print(f"   Errors: {report.error_tests}")
-    
+
     # We require that initialization and apps table work at minimum
     # (Raw Data Export API may fail due to WAF Challenge)
     min_required_tests = 3  # init, list_tables, get_schema
