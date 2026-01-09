@@ -5,7 +5,7 @@ from typing import Dict, List, Iterator
 from urllib.parse import quote
 
 import requests
-from pyspark.sql.types import *
+import pyspark.sql.types as T
 
 
 class LakeflowConnect:
@@ -73,7 +73,7 @@ class LakeflowConnect:
 
     def get_table_schema(
         self, table_name: str, table_options: Dict[str, str]
-    ) -> StructType:
+    ) -> T.StructType:
         """
         Returns the schema for the specified AppsFlyer report.
         """
@@ -82,97 +82,97 @@ class LakeflowConnect:
 
         # Base schema fields present in all reports
         base_fields = [
-            StructField("appsflyer_id", StringType(), True),
-            StructField("event_time", TimestampType(), True),
-            StructField("install_time", TimestampType(), True),
-            StructField("event_name", StringType(), True),
-            StructField("event_type", StringType(), True),
-            StructField("event_value", StringType(), True),
-            StructField("event_revenue", DoubleType(), True),
-            StructField("event_revenue_currency", StringType(), True),
-            StructField("event_revenue_usd", DoubleType(), True),
+            T.StructField("appsflyer_id", T.StringType(), True),
+            T.StructField("event_time", T.TimestampType(), True),
+            T.StructField("install_time", T.TimestampType(), True),
+            T.StructField("event_name", T.StringType(), True),
+            T.StructField("event_type", T.StringType(), True),
+            T.StructField("event_value", T.StringType(), True),
+            T.StructField("event_revenue", T.DoubleType(), True),
+            T.StructField("event_revenue_currency", T.StringType(), True),
+            T.StructField("event_revenue_usd", T.DoubleType(), True),
         ]
 
         # Attribution fields (null in organic reports)
         attribution_fields = [
-            StructField("attributed_touch_type", StringType(), True),
-            StructField("attributed_touch_time", TimestampType(), True),
-            StructField("media_source", StringType(), True),
-            StructField("campaign", StringType(), True),
-            StructField("af_channel", StringType(), True),
-            StructField("af_ad", StringType(), True),
-            StructField("af_ad_id", StringType(), True),
-            StructField("af_adset", StringType(), True),
-            StructField("af_c_id", StringType(), True),
-            StructField("match_type", StringType(), True),
-            StructField("af_keywords", StringType(), True),
-            StructField("af_cost_value", DoubleType(), True),
-            StructField("af_cost_currency", StringType(), True),
+            T.StructField("attributed_touch_type", T.StringType(), True),
+            T.StructField("attributed_touch_time", T.TimestampType(), True),
+            T.StructField("media_source", T.StringType(), True),
+            T.StructField("campaign", T.StringType(), True),
+            T.StructField("af_channel", T.StringType(), True),
+            T.StructField("af_ad", T.StringType(), True),
+            T.StructField("af_ad_id", T.StringType(), True),
+            T.StructField("af_adset", T.StringType(), True),
+            T.StructField("af_c_id", T.StringType(), True),
+            T.StructField("match_type", T.StringType(), True),
+            T.StructField("af_keywords", T.StringType(), True),
+            T.StructField("af_cost_value", T.DoubleType(), True),
+            T.StructField("af_cost_currency", T.StringType(), True),
         ]
 
         # Device fields
         device_fields = [
-            StructField("advertising_id", StringType(), True),
-            StructField("idfa", StringType(), True),
-            StructField("idfv", StringType(), True),
-            StructField("android_id", StringType(), True),
-            StructField("imei", StringType(), True),
-            StructField("device_model", StringType(), True),
-            StructField("os_version", StringType(), True),
-            StructField("platform", StringType(), True),
-            StructField("language", StringType(), True),
+            T.StructField("advertising_id", T.StringType(), True),
+            T.StructField("idfa", T.StringType(), True),
+            T.StructField("idfv", T.StringType(), True),
+            T.StructField("android_id", T.StringType(), True),
+            T.StructField("imei", T.StringType(), True),
+            T.StructField("device_model", T.StringType(), True),
+            T.StructField("os_version", T.StringType(), True),
+            T.StructField("platform", T.StringType(), True),
+            T.StructField("language", T.StringType(), True),
         ]
 
         # Location fields
         location_fields = [
-            StructField("country_code", StringType(), True),
-            StructField("city", StringType(), True),
-            StructField("region", StringType(), True),
-            StructField("postal_code", StringType(), True),
-            StructField("ip", StringType(), True),
+            T.StructField("country_code", T.StringType(), True),
+            T.StructField("city", T.StringType(), True),
+            T.StructField("region", T.StringType(), True),
+            T.StructField("postal_code", T.StringType(), True),
+            T.StructField("ip", T.StringType(), True),
         ]
 
         # App fields
         app_fields = [
-            StructField("app_id", StringType(), True),
-            StructField("app_name", StringType(), True),
-            StructField("app_version", StringType(), True),
-            StructField("bundle_id", StringType(), True),
+            T.StructField("app_id", T.StringType(), True),
+            T.StructField("app_name", T.StringType(), True),
+            T.StructField("app_version", T.StringType(), True),
+            T.StructField("bundle_id", T.StringType(), True),
         ]
 
         # Network fields
         network_fields = [
-            StructField("carrier", StringType(), True),
-            StructField("wifi", BooleanType(), True),
-            StructField("user_agent", StringType(), True),
+            T.StructField("carrier", T.StringType(), True),
+            T.StructField("wifi", T.BooleanType(), True),
+            T.StructField("user_agent", T.StringType(), True),
         ]
 
         # IAP & Subscription fields
         iap_fields = [
-            StructField("af_product_id", StringType(), True),
-            StructField("af_purchase_date_ms", LongType(), True),
-            StructField("af_transaction_id", StringType(), True),
-            StructField("af_order_id", StringType(), True),
-            StructField("af_net_revenue", DoubleType(), True),
-            StructField("af_store", StringType(), True),
-            StructField("af_currency", StringType(), True),
-            StructField("af_price", DoubleType(), True),
-            StructField("af_quantity", LongType(), True),
+            T.StructField("af_product_id", T.StringType(), True),
+            T.StructField("af_purchase_date_ms", T.LongType(), True),
+            T.StructField("af_transaction_id", T.StringType(), True),
+            T.StructField("af_order_id", T.StringType(), True),
+            T.StructField("af_net_revenue", T.DoubleType(), True),
+            T.StructField("af_store", T.StringType(), True),
+            T.StructField("af_currency", T.StringType(), True),
+            T.StructField("af_price", T.DoubleType(), True),
+            T.StructField("af_quantity", T.LongType(), True),
         ]
 
         # Ad Revenue fields
         ad_revenue_fields = [
-            StructField("ad_revenue_ad_type", StringType(), True),
-            StructField("mediation_network", StringType(), True),
-            StructField("placement", StringType(), True),
-            StructField("impressions", LongType(), True),
+            T.StructField("ad_revenue_ad_type", T.StringType(), True),
+            T.StructField("mediation_network", T.StringType(), True),
+            T.StructField("placement", T.StringType(), True),
+            T.StructField("impressions", T.LongType(), True),
         ]
 
         # Fraud Prevention fields
         fraud_fields = [
-            StructField("blocked_reason", StringType(), True),
-            StructField("is_organic", StringType(), True),
-            StructField("rejected_reason", StringType(), True),
+            T.StructField("blocked_reason", T.StringType(), True),
+            T.StructField("is_organic", T.StringType(), True),
+            T.StructField("rejected_reason", T.StringType(), True),
         ]
 
         # Combine all fields
@@ -188,7 +188,7 @@ class LakeflowConnect:
             fraud_fields
         )
 
-        return StructType(all_fields)
+        return T.StructType(all_fields)
 
     def read_table_metadata(
         self, table_name: str, table_options: Dict[str, str]
