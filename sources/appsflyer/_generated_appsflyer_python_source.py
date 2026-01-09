@@ -633,7 +633,27 @@ def register_lakeflow_source(spark):
                     f"Unexpected response format for apps: {type(data).__name__}"
                 )
 
-            return iter(apps), {}
+            # Transform JSON API format to flat structure
+            # API returns: {"id": "...", "type": "app", "attributes": {...}}
+            # We need: {"app_id": "...", "app_name": "...", ...}
+            def flatten_app(app):
+                if isinstance(app, dict) and 'attributes' in app:
+                    # JSON API format
+                    flattened = {
+                        'app_id': app.get('id'),
+                        'app_name': app.get('attributes', {}).get('name'),
+                        'platform': app.get('attributes', {}).get('platform'),
+                        'bundle_id': app.get('id'),  # Use id as bundle_id
+                        'time_zone': app.get('attributes', {}).get('time_zone'),
+                        'currency': app.get('attributes', {}).get('currency'),
+                        'status': app.get('attributes', {}).get('status'),
+                    }
+                    return flattened
+                # Already flat format
+                return app
+
+            flattened_apps = (flatten_app(app) for app in apps)
+            return flattened_apps, {}
 
         def _read_installs_report(
             self, start_offset: dict, table_options: dict[str, str]
