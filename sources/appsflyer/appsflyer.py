@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Iterator, Any
-import time
+import csv
+import io
 import requests
 from pyspark.sql.types import (
     StructType,
@@ -31,11 +32,6 @@ class LakeflowConnect:
         self.base_url = options.get("base_url", "https://hq1.appsflyer.com").rstrip("/")
         self.api_token = api_token
 
-        # Rate limiting: Fixed 60 second delay between requests to avoid WAF challenges
-        # AppsFlyer API triggers WAF challenges if requests are too frequent
-        self.rate_limit_delay = 60.0  # Fixed at 60 seconds between requests
-        self._last_request_time = 0
-
         # Configure a session with proper headers for AppsFlyer API
         # Note: Management API (/api/mng/*) and Raw Data Export API (/export/*)
         # may require different headers
@@ -59,9 +55,6 @@ class LakeflowConnect:
             "uninstall_events_report",
             "organic_installs_report",
             "organic_in_app_events_report",
-            "daily_report",
-            "retargeting_installs_report",
-            "retargeting_in_app_events_report",
         ]
 
     def get_table_schema(
@@ -82,11 +75,6 @@ class LakeflowConnect:
             "organic_installs_report": self._get_installs_report_schema,
             # Same as in_app_events
             "organic_in_app_events_report": self._get_in_app_events_report_schema,
-            "daily_report": self._get_daily_report_schema,
-            # Same as installs
-            "retargeting_installs_report": self._get_installs_report_schema,
-            # Same as in_app_events
-            "retargeting_in_app_events_report": self._get_in_app_events_report_schema,
         }
 
         if table_name not in schema_map:
@@ -129,21 +117,6 @@ class LakeflowConnect:
                 "cursor_field": "event_time",
                 "ingestion_type": "cdc",
             },
-            "daily_report": {
-                "primary_keys": ["date", "media_source"],
-                "cursor_field": "date",
-                "ingestion_type": "cdc",
-            },
-            "retargeting_installs_report": {
-                "primary_keys": ["appsflyer_id", "event_time"],
-                "cursor_field": "event_time",
-                "ingestion_type": "cdc",
-            },
-            "retargeting_in_app_events_report": {
-                "primary_keys": ["appsflyer_id", "event_time", "event_name"],
-                "cursor_field": "event_time",
-                "ingestion_type": "cdc",
-            },
         }
 
         if table_name not in metadata_map:
@@ -176,9 +149,6 @@ class LakeflowConnect:
             "uninstall_events_report": self._read_uninstall_events_report,
             "organic_installs_report": self._read_organic_installs_report,
             "organic_in_app_events_report": self._read_organic_in_app_events_report,
-            "daily_report": self._read_daily_report,
-            "retargeting_installs_report": self._read_retargeting_installs_report,
-            "retargeting_in_app_events_report": self._read_retargeting_in_app_events_report,
         }
 
         if table_name not in reader_map:
@@ -363,60 +333,12 @@ class LakeflowConnect:
             ]
         )
 
-    def _get_daily_report_schema(self) -> StructType:
-        """Return the daily_report table schema for aggregated metrics."""
-        return StructType(
-            [
-                # Date and grouping dimensions
-                StructField("date", StringType(), False),
-                StructField("media_source", StringType(), False),
-                StructField("campaign", StringType(), True),
-                StructField("adset", StringType(), True),
-                StructField("ad", StringType(), True),
-                StructField("site_id", StringType(), True),
-                StructField("channel", StringType(), True),
-                StructField("keywords", StringType(), True),
-                StructField("geo", StringType(), True),
-                StructField("country_code", StringType(), True),
-                # Metrics
-                StructField("impressions", LongType(), True),
-                StructField("clicks", LongType(), True),
-                StructField("installs", LongType(), True),
-                StructField("conversions", LongType(), True),
-                StructField("sessions", LongType(), True),
-                StructField("loyal_users", LongType(), True),
-                StructField("total_revenue", DoubleType(), True),
-                StructField("average_ecpi", DoubleType(), True),
-                StructField("total_cost", DoubleType(), True),
-                StructField("roi", DoubleType(), True),
-                StructField("arpu", DoubleType(), True),
-            ]
-        )
-
-    def _apply_rate_limit(self):
-        """
-        Apply rate limiting to avoid triggering WAF challenges.
-        Waits if necessary to maintain the configured delay between requests.
-        """
-        if self.rate_limit_delay > 0:
-            current_time = time.time()
-            time_since_last_request = current_time - self._last_request_time
-
-            if time_since_last_request < self.rate_limit_delay:
-                sleep_time = self.rate_limit_delay - time_since_last_request
-                time.sleep(sleep_time)
-
-            self._last_request_time = time.time()
-
     def _read_apps(
         self, start_offset: dict, table_options: dict[str, str]
     ) -> (Iterator[dict], dict):
         """
         Read the apps snapshot table.
         """
-        # Apply rate limiting before making request
-        self._apply_rate_limit()
-
         url = f"{self.base_url}/api/mng/apps"
         response = self._session.get(url, timeout=60)
 
@@ -510,36 +432,6 @@ class LakeflowConnect:
             "organic_in_app_events_report", start_offset, table_options
         )
 
-    def _read_daily_report(
-        self, start_offset: dict, table_options: dict[str, str]
-    ) -> (Iterator[dict], dict):
-        """
-        Read the daily_report (aggregated) table.
-        """
-        return self._read_event_report(
-            "partners_report", start_offset, table_options, is_aggregated=True
-        )
-
-    def _read_retargeting_installs_report(
-        self, start_offset: dict, table_options: dict[str, str]
-    ) -> (Iterator[dict], dict):
-        """
-        Read the retargeting_installs_report table.
-        """
-        return self._read_event_report(
-            "retargeting_installs_report", start_offset, table_options
-        )
-
-    def _read_retargeting_in_app_events_report(
-        self, start_offset: dict, table_options: dict[str, str]
-    ) -> (Iterator[dict], dict):
-        """
-        Read the retargeting_in_app_events_report table.
-        """
-        return self._read_event_report(
-            "retargeting_in_app_events_report", start_offset, table_options
-        )
-
     # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     def _read_event_report(
         self,
@@ -605,15 +497,13 @@ class LakeflowConnect:
         to_date = to_dt.strftime("%Y-%m-%d")
 
         # Build request URL
-        url = f"{self.base_url}/export/{app_id}/{report_type}/v5"
+        # Raw Data Export API path: /api/raw-data/export/app/{app_id}/{report_type}/v5
+        url = f"{self.base_url}/api/raw-data/export/app/{app_id}/{report_type}/v5"
         params = {
             "from": from_date,
             "to": to_date,
             "timezone": "UTC",
         }
-
-        # Apply rate limiting before making request
-        self._apply_rate_limit()
 
         # Make API request with CSV Accept header
         # Note: Raw Data Export API expects CSV format
@@ -625,11 +515,27 @@ class LakeflowConnect:
                 f"AppsFlyer API error for {report_type}: {response.status_code} {response.text}"
             )
 
-        data = response.json() or []
-        if not isinstance(data, list):
-            raise ValueError(
-                f"Unexpected response format for {report_type}: {type(data).__name__}"
-            )
+        # Parse CSV response
+        # Raw Data Export API returns CSV with UTF-8 BOM
+        text = response.content.decode('utf-8-sig')
+        if not text or not text.strip():
+            # Empty response, return empty iterator
+            return iter([]), cursor
+
+        # Parse CSV into list of dictionaries
+        csv_reader = csv.DictReader(io.StringIO(text))
+        raw_data = list(csv_reader)
+
+        # Normalize field names and values
+        # CSV headers are like "Event Time" but schema expects "event_time"
+        # Empty strings should be None for proper type conversion
+        def normalize_record(record):
+            return {
+                key.lower().replace(' ', '_'): (value if value != '' else None)
+                for key, value in record.items()
+            }
+
+        data = [normalize_record(record) for record in raw_data]
 
         # Find the maximum event_time or date for the next cursor
         max_cursor = cursor

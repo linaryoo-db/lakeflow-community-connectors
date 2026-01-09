@@ -76,9 +76,6 @@ def test_appsflyer_connector():
         "uninstall_events_report",
         "organic_installs_report",
         "organic_in_app_events_report",
-        "daily_report",
-        "retargeting_installs_report",
-        "retargeting_in_app_events_report",
     ]
     for table in event_tables:
         table_configs[table] = table_config

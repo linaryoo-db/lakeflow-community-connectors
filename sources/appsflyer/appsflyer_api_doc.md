@@ -35,28 +35,30 @@ Notes:
 For connector purposes, we treat specific AppsFlyer resources as **objects/tables**.  
 The object list is **static** (defined by the connector), representing different types of reports and data available from AppsFlyer.
 
-| Object Name | Description | Primary Endpoint | Ingestion Type (planned) |
-|------------|-------------|------------------|--------------------------|
+| Object Name | Description | Primary Endpoint | Ingestion Type |
+|------------|-------------|------------------|----------------|
 | `apps` | List of apps associated with the account | `GET /api/mng/apps` | `snapshot` |
-| `installs_report` | Installation events for an app | `GET /export/<app_id>/installs_report/v5` | `cdc` (based on event_time) |
-| `in_app_events_report` | In-app event data for an app | `GET /export/<app_id>/in_app_events_report/v5` | `cdc` (based on event_time) |
-| `uninstall_events_report` | Uninstall events for an app | `GET /export/<app_id>/uninstall_events_report/v5` | `cdc` (based on event_time) |
-| `organic_installs_report` | Organic (non-attributed) installs | `GET /export/<app_id>/organic_installs_report/v5` | `cdc` (based on event_time) |
-| `organic_in_app_events_report` | Organic in-app events | `GET /export/<app_id>/organic_in_app_events_report/v5` | `cdc` (based on event_time) |
-| `daily_report` | Daily aggregated metrics (partners) | `GET /export/<app_id>/partners_report/v5` | `cdc` (based on date) |
-| `cohort_report` | Cohort-based retention metrics | `GET /export/<app_id>/cohort_report/v5` | `snapshot` (configurable) |
-| `retargeting_installs_report` | Re-engagement installs | `GET /export/<app_id>/retargeting_installs_report/v5` | `cdc` (based on event_time) |
-| `retargeting_in_app_events_report` | Re-engagement in-app events | `GET /export/<app_id>/retargeting_in_app_events_report/v5` | `cdc` (based on event_time) |
+| `installs_report` | Installation events for an app | `GET /api/raw-data/export/app/<app_id>/installs_report/v5` | `cdc` (based on event_time) |
+| `in_app_events_report` | In-app event data for an app | `GET /api/raw-data/export/app/<app_id>/in_app_events_report/v5` | `cdc` (based on event_time) |
+| `uninstall_events_report` | Uninstall events for an app | `GET /api/raw-data/export/app/<app_id>/uninstall_events_report/v5` | `cdc` (based on event_time) |
+| `organic_installs_report` | Organic (non-attributed) installs | `GET /api/raw-data/export/app/<app_id>/organic_installs_report/v5` | `cdc` (based on event_time) |
+| `organic_in_app_events_report` | Organic in-app events | `GET /api/raw-data/export/app/<app_id>/organic_in_app_events_report/v5` | `cdc` (based on event_time) |
 
 **Connector scope for initial implementation**:
 - Step 1 focuses on the `apps` object and `installs_report` to document in detail
 - Other objects are listed for future extension
 
+**Response Format**:
+- **Management API** (`/api/mng/*`): Returns JSON with JSON:API format
+- **Raw Data Export API** (`/api/raw-data/export/*`): Returns CSV format with UTF-8 BOM
+
 High-level notes on objects:
-- **apps**: Metadata about applications; treated as snapshot
-- **installs_report**: Core table for installation events with attribution data
-- **in_app_events_report**: Post-install events (purchases, registrations, etc.)
-- **uninstall_events_report**: Records when users uninstall the app
+- **apps**: Metadata about applications; treated as snapshot (JSON format)
+- **installs_report**: Core table for installation events with attribution data (CSV format)
+- **in_app_events_report**: Post-install events (purchases, registrations, etc.) (CSV format)
+- **uninstall_events_report**: Records when users uninstall the app (CSV format)
+- **organic_installs_report**: Non-attributed installation events (CSV format)
+- **organic_in_app_events_report**: Non-attributed in-app events (CSV format)
 - **daily_report**: Aggregated metrics by day, media source, and campaign
 - **cohort_report**: Retention and LTV metrics grouped by cohorts
 - All event-based reports support date range filtering for incremental reads
@@ -120,7 +122,7 @@ curl -X GET \
 ### `installs_report` object (primary table)
 
 **Source endpoint**:  
-`GET /export/<app_id>/installs_report/v5`
+`GET /api/raw-data/export/app/<app_id>/installs_report/v5`
 
 **Key behavior**:
 - Returns installation events with full attribution data
@@ -230,7 +232,7 @@ Top-level fields (from the AppsFlyer Raw Data Export schema):
 curl -X GET \
   -H "Authorization: Bearer <API_TOKEN>" \
   -H "accept: application/json" \
-  "https://hq1.appsflyer.com/export/id123456789/installs_report/v5?from=2025-01-01&to=2025-01-07"
+  "https://hq1.appsflyer.com/api/raw-data/export/app/id123456789/installs_report/v5?from=2025-01-01&to=2025-01-07"
 ```
 
 ### `in_app_events_report` object
@@ -325,7 +327,7 @@ For `installs_report` and event reports:
 ### Primary read endpoint for `installs_report`
 
 - **HTTP method**: `GET`
-- **Endpoint**: `/export/<app_id>/installs_report/v5`
+- **Endpoint**: `/api/raw-data/export/app/<app_id>/installs_report/v5`
 - **Base URL**: `https://hq1.appsflyer.com`
 
 **Path parameters**:
@@ -377,7 +379,7 @@ TO_DATE="2025-01-02"
 curl -X GET \
   -H "Authorization: Bearer <API_TOKEN>" \
   -H "accept: application/json" \
-  "https://hq1.appsflyer.com/export/id123456789/installs_report/v5?from=${FROM_DATE}&to=${TO_DATE}&timezone=UTC"
+  "https://hq1.appsflyer.com/api/raw-data/export/app/id123456789/installs_report/v5?from=${FROM_DATE}&to=${TO_DATE}&timezone=UTC"
 ```
 
 ### Read endpoints for other report types
